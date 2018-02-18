@@ -1,0 +1,116 @@
+<html>
+    <head>
+        <title>CMPM163 Review</title>
+        <style>
+            body { margin: 0; }
+        </style>
+    </head>
+
+    <body>
+
+        <!-- Loading external libraries -->
+        <script src="js/three.js"></script>
+        <script src="js/cmgine.js"></script>
+		<script src="js/orbitControls.js"></script>
+
+        <!-- Loading external shaders -->
+        <script src="shaders/sky-box-vertex-shader.js"></script>
+        <script src="shaders/sky-box-frag-shader.js"></script>
+
+        <!-- Loading external objects -->
+        <script src="js/objects/sky-box.js"></script>
+		
+		<script id="heightVertexShader" type="x-shader/x-vertex">
+			attribute vec2 texCoords;
+			
+			uniform sampler2D heightmap;
+			varying vec2 UV;
+			varying vec3 v_pos;
+			
+			void main() {
+				UV = vec2(position.x / 10.0 + 0.5, position.y / 10.0 + 0.5);
+				v_pos = position;
+				float height = texture2D(heightmap, UV).r;
+				v_pos.z += height * 2.0 - 0.5;
+				gl_Position = projectionMatrix * modelViewMatrix * vec4(v_pos, 1.0);
+			}
+			
+		</script>
+		
+		<script id="heightFragShader" type="x-shader/x-fragment">
+			varying vec2 UV;
+			varying vec3 v_pos;
+			
+			uniform sampler2D heightmap;
+			
+			void main(){
+				gl_FragColor = texture2D(heightmap, UV);
+				//gl_FragColor = vec4(0.0, UV.x, UV.y, 1.0);
+				//gl_FragColor = vec4(v_pos.x, v_pos.y, v_pos.z, 1.0);
+			}
+		</script>
+
+        <script>
+            // 0. Create a renderer
+            var renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // 1. Create a Scene
+            var scene = new THREE.Scene();
+
+            // 1.1 Create a camera
+            var camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 1000);
+			camera.rotation.x = -45.0;
+			camera.position.y = 20;
+			camera.position.z = 15;
+			
+			controls = new THREE.OrbitControls( camera, renderer.domElement );
+
+            // 2. Create a cube
+            var skyBox = createSkyBox(1000, [
+        		'img/beach/posx.jpg',
+        		'img/beach/negx.jpg',
+        		'img/beach/posy.jpg',
+        		'img/beach/negy.jpg',
+        		'img/beach/posz.jpg',
+        		'img/beach/negz.jpg'
+        	]);
+			
+			var hMap = new THREE.TextureLoader().load( 'fennec.jpg' );
+			var uniforms = {
+    			heightmap: {type: 't', value: hMap},
+			};
+			
+			var heightMaterial = new THREE.ShaderMaterial({
+				uniforms: uniforms,
+				vertexShader: document.getElementById("heightVertexShader").innerHTML,
+				fragmentShader: document.getElementById("heightFragShader").innerHTML,
+			});
+			
+			var geometry = new THREE.PlaneGeometry( 10, 10, 256, 256 );
+			
+			mesh = new THREE.Mesh( geometry, heightMaterial );
+			mesh.translateX(0.0);
+			mesh.material.side = THREE.DoubleSide;
+			mesh.rotation.x = -45;
+        	scene.add( mesh );
+			
+			//Brown: #D2691E
+			
+			var waterMaterial = new THREE.MeshBasicMaterial( {color: 0x1111ff, side: THREE.DoubleSide} );
+			mesh2 = new THREE.Mesh( geometry, waterMaterial );
+			mesh2.translateX(0.0);
+			mesh2.material.side = THREE.DoubleSide;
+			mesh2.rotation.x = -45;
+        	scene.add( mesh2 );
+
+            scene.add(skyBox);
+
+            CMENGINE.Start(scene, renderer, camera);
+            CMENGINE.Update();
+			
+
+        </script>
+    </body>
+</html>
