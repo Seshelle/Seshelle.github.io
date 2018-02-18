@@ -13,12 +13,86 @@
         <script src="js/cmgine.js"></script>
 		<script src="js/orbitControls.js"></script>
 
-        <!-- Loading external shaders -->
-        <script src="shaders/sky-box-vertex-shader.js"></script>
-        <script src="shaders/sky-box-frag-shader.js"></script>
+        <script id="skyboxVS" type="x-shader/x-vertex">
 
-        <!-- Loading external objects -->
-        <script src="js/objects/sky-box.js"></script>
+			uniform mat4 modelMatrix;
+			uniform mat4 viewMatrix;
+			uniform mat4 projectionMatrix;
+
+			attribute vec3 position; 
+
+			varying vec3 vWorldPosition;
+		
+		void main() {
+
+			vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
+			vWorldPosition = worldPosition.xyz;
+
+			vec4 p = viewMatrix * modelMatrix * vec4(position, 1.0);
+			gl_Position = projectionMatrix * p;
+			
+		}
+
+		</script>
+
+
+		<script id="skyboxFS" type="x-shader/x-fragment">
+
+			precision mediump float;
+			
+			uniform samplerCube tCube;
+			varying vec3 vWorldPosition;
+
+			void main() {
+
+				gl_FragColor = textureCube( tCube, vec3(  vWorldPosition ) );
+			}
+		
+		</script>
+		
+		<script id="environmentMapVS" type="x-shader/x-vertex">
+
+			uniform mat4 modelMatrix;
+			uniform mat4 viewMatrix;
+			uniform mat4 projectionMatrix;
+
+			uniform vec3 cameraPosition;
+			
+			attribute vec3 position; 
+			attribute vec3 normal; 
+
+			varying vec3 vI;
+			varying vec3 vWorldNormal;
+
+			void main() {
+				vec4 mvPosition = viewMatrix * modelMatrix * vec4( position, 1.0 );
+				vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
+
+				vWorldNormal = normalize( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
+
+				vI = worldPosition.xyz - cameraPosition;
+
+				gl_Position = projectionMatrix * mvPosition;
+			}	
+		  
+		</script>
+
+		<script id="environmentMapFS" type="x-shader/x-fragment">
+
+			precision mediump float;
+
+			uniform samplerCube envMap;
+			uniform sampler2D heightMap;
+
+			varying vec3 vI, vWorldNormal;
+
+			void main() {
+				vec3 reflection = reflect( vI, vWorldNormal );
+				vec4 envColor = textureCube( envMap, vec3( -reflection.x, reflection.yz ) );
+				gl_FragColor = vec4(envColor.r, envColor.g, envColor.b, 0.9);
+			}
+	  
+		</script>
 		
 		<script id="heightVertexShader" type="x-shader/x-vertex">
 			attribute vec2 texCoords;
@@ -31,7 +105,7 @@
 				UV = vec2(position.x / 10.0 + 0.5, position.y / 10.0 + 0.5);
 				v_pos = position;
 				float height = texture2D(heightmap, UV).r;
-				v_pos.z += height * 2.0 - 0.5;
+				v_pos.z += height * 2.0 - 0.7;
 				gl_Position = projectionMatrix * modelViewMatrix * vec4(v_pos, 1.0);
 			}
 			
@@ -66,16 +140,52 @@
 			camera.position.z = 15;
 			
 			controls = new THREE.OrbitControls( camera, renderer.domElement );
+			
+			var cubeMap = new THREE.CubeTextureLoader()
+				.load( [
+					'posx.jpg',
+					'negx.jpg',
+					'posy.jpg',
+					'negy.jpg',
+					'posz.jpg',
+					'negz.jpg'
+				] );
+				
+			var uniforms = { "tCube": { type: "t", value: cubeMap } };
+			
+			var sb_vs = document.getElementById( 'skyboxVS' ).textContent;
+      		var sb_fs = document.getElementById( 'skyboxFS' ).textContent;
+			
+			var material = new THREE.RawShaderMaterial( {
+					uniforms: uniforms,
+					vertexShader: sb_vs,
+					fragmentShader: sb_fs
+				} );
 
-            // 2. Create a cube
-            var skyBox = createSkyBox(1000, [
-        		'img/beach/posx.jpg',
-        		'img/beach/negx.jpg',
-        		'img/beach/posy.jpg',
-        		'img/beach/negy.jpg',
-        		'img/beach/posz.jpg',
-        		'img/beach/negz.jpg'
-        	]);
+			material.depthWrite = false;
+      		material.side = THREE.BackSide;
+
+			var geometry = new THREE.BoxGeometry( 1000, 1000, 1000 );
+
+			skyMesh = new THREE.Mesh( geometry, material );
+
+			scene.add( skyMesh );
+				
+			var uniforms2 = {
+				tCube: { type: "t", value: cubeMap },
+			};
+			
+			var em_vs = document.getElementById( 'environmentMapVS' ).textContent;
+      		var em_fs = document.getElementById( 'environmentMapFS' ).textContent;
+
+			var waterMaterial = new THREE.RawShaderMaterial( {
+				uniforms: uniforms2,
+				vertexShader: em_vs,
+				fragmentShader: em_fs,
+				blending:       THREE.AdditiveBlending,
+				//depthTest:      false,
+				transparent:    true
+			} );
 			
 			var hMap = new THREE.TextureLoader().load( 'fennec.jpg' );
 			var uniforms = {
@@ -88,9 +198,9 @@
 				fragmentShader: document.getElementById("heightFragShader").innerHTML,
 			});
 			
-			var geometry = new THREE.PlaneGeometry( 10, 10, 256, 256 );
+			var geometry2 = new THREE.PlaneGeometry( 10, 10, 256, 256 );
 			
-			mesh = new THREE.Mesh( geometry, heightMaterial );
+			mesh = new THREE.Mesh( geometry2, heightMaterial );
 			mesh.translateX(0.0);
 			mesh.material.side = THREE.DoubleSide;
 			mesh.rotation.x = -45;
@@ -98,14 +208,12 @@
 			
 			//Brown: #D2691E
 			
-			var waterMaterial = new THREE.MeshBasicMaterial( {color: 0x1111ff, side: THREE.DoubleSide} );
-			mesh2 = new THREE.Mesh( geometry, waterMaterial );
+			//var waterMaterial = new THREE.MeshBasicMaterial( {color: 0x1111ff, side: THREE.DoubleSide} );
+			mesh2 = new THREE.Mesh( geometry2, waterMaterial );
 			mesh2.translateX(0.0);
 			mesh2.material.side = THREE.DoubleSide;
 			mesh2.rotation.x = -45;
         	scene.add( mesh2 );
-
-            scene.add(skyBox);
 
             CMENGINE.Start(scene, renderer, camera);
             CMENGINE.Update();
